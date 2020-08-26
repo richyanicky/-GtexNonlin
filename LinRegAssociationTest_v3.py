@@ -39,16 +39,16 @@ def GetCisSTRs(gtfile, chrom, start, end):
     data = []
     for record in records:
         data.append(record)
+    #[x for xs in data for x in xs.split(',')]
     if len(data) == 0: return None
     df = pd.DataFrame(data)
-    dfnew = df[[0,1]].copy()
-    for col in range(2,len(df.columns)): 
-        print(col) 
-        dfnew = pd.concat([dfnew,df.iloc[:,col].str.split(',',n=1,expand=True)],axis=1)
+    #print(pd.DataFrame(df.iloc['ENSG00000143727.11'].str.split(',', expand=True).values, columns=['a','b']))
+    #pd.concat([df[[0]], df.iloc[:,[5]].str.split(', ', expand=True)], axis=1)
+    #print(df)
+    #print(df)
     gtcols = [item.decode('UTF-8') for item in (gzip.open(gtfile, "r").readline().strip().split())]
-    colsname  = [gtcols[0]] + [gtcols[1]] + [val for val in gtcols[2:] for _ in (0,1)]
-    dfnew.columns = colsname
-    return dfnew
+    df.columns = gtcols
+    return df
 
 def LoadSamples(gtfile):
     samples = [item.decode('UTF-8') for item in (gzip.open(gtfile, "r").readline().strip().split()[2:])]
@@ -64,7 +64,6 @@ def LinearRegression(X, Y, norm=False, minsamples=0):
     """
     Perform linear regression, return beta, beta_se, p
     """
-    #print(X,Y)
     if norm:
         #X = ZNorm(X)
         #Y = ZNorm(Y)
@@ -72,12 +71,10 @@ def LinearRegression(X, Y, norm=False, minsamples=0):
         if np.var(X)==0: return None, None, None
         if len(X) <= minsamples: return None, None, None
     X = sm.add_constant(X)
-    X["lin"] = X.iloc[:,1] + X.iloc[:,2]
-    X["Sqrd"] = X.iloc[:,1]**2+X.iloc[:,2]**2
-    print(X,Y)
+    X["Sqrd"] = X.iloc[:,1]**2
+    print(X)
     mod_ols = sm.OLS(endog=Y, exog=X, missing='drop')
     res_ols = mod_ols.fit()
-    print(res_ols.pvalues)
     pval = res_ols.pvalues[1]
     slope = res_ols.params[1]
     err = res_ols.bse[1]
@@ -141,7 +138,6 @@ if __name__ == "__main__":
     # Restrict to STR samples
     str_samples = LoadSamples(STRGTFILE)
     samples_to_remove = []
-   
     for item in str_samples:
         if item not in expr.index: samples_to_remove.append(item) #str_samples.remove(item)
     for item in samples_to_remove: str_samples.remove(item)
@@ -166,21 +162,20 @@ if __name__ == "__main__":
         # Preprocess all at once
         str_ids = ["STR_%s"%item for item in cis_strs["start"].values]
         starts = list(cis_strs["start"].values)
-        colsname  = [val for val in str_samples for _ in (0,1)]
-        cis_strs = cis_strs[colsname].transpose()
-        cis_strs.index = colsname
+        cis_strs = cis_strs[str_samples].transpose()
+        cis_strs.index = str_samples
         cis_strs.columns = str_ids
-        #str_samples = colsname
+        print(cis_strs)
 
         if PERMUTE_EXPR:
             expr[gene] = random.sample(list(expr[gene].values), expr.shape[0])
         y = pd.DataFrame({"expr":list(expr.loc[:, gene])})
         y.index = str_samples
-        
+
         for j in range(len(str_ids)):            
             # Get STR data
             locus_str = cis_strs.ix[:, str_ids[j]]
-            #print(str_ids[j])
+
             # Filter
             samples_to_keep = [str_samples[k] for k in range(len(str_samples)) if locus_str[str_samples[k]] != "None"]
             locus_str = locus_str[samples_to_keep].astype('float') #locus_str.loc[samples_to_keep,:]
@@ -200,7 +195,6 @@ if __name__ == "__main__":
           
             # Run regression
             beta, beta_se, p = LinearRegression(locus_str, locus_y["expr"].values, norm=NORM, minsamples=MINSAMPLES)
-            print(beta,beta_se,p)
             # Write output
             if beta is not None:
                 f.write("\t".join(map(str, [gene, CHROM, str_ids[j], starts[j], len(str_samples)-locus_str.shape[0], beta, beta_se, -1, p]))+"\n")

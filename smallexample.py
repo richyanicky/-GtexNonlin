@@ -43,11 +43,12 @@ def GetCisSTRs(gtfile, chrom, start, end):
     df = pd.DataFrame(data)
     dfnew = df[[0,1]].copy()
     for col in range(2,len(df.columns)): 
-        print(col) 
         dfnew = pd.concat([dfnew,df.iloc[:,col].str.split(',',n=1,expand=True)],axis=1)
     gtcols = [item.decode('UTF-8') for item in (gzip.open(gtfile, "r").readline().strip().split())]
     colsname  = [gtcols[0]] + [gtcols[1]] + [val for val in gtcols[2:] for _ in (0,1)]
     dfnew.columns = colsname
+    dfnewT = dfnew.T
+    """ #dfnewT.to_csv("mytest1.csv",index=True,header=True) """
     return dfnew
 
 def LoadSamples(gtfile):
@@ -74,10 +75,8 @@ def LinearRegression(X, Y, norm=False, minsamples=0):
     X = sm.add_constant(X)
     X["lin"] = X.iloc[:,1] + X.iloc[:,2]
     X["Sqrd"] = X.iloc[:,1]**2+X.iloc[:,2]**2
-    print(X,Y)
     mod_ols = sm.OLS(endog=Y, exog=X, missing='drop')
     res_ols = mod_ols.fit()
-    print(res_ols.pvalues)
     pval = res_ols.pvalues[1]
     slope = res_ols.params[1]
     err = res_ols.bse[1]
@@ -146,6 +145,9 @@ if __name__ == "__main__":
         if item not in expr.index: samples_to_remove.append(item) #str_samples.remove(item)
     for item in samples_to_remove: str_samples.remove(item)
     expr = expr.loc[str_samples,:]
+    dfe = pd.DataFrame(data=expr)
+    dfeT = dfe.T
+    #dfeT.to_csv('mydatexpt.txt')
     PROGRESS("There are %s samples"%len(str_samples))
     
     f = open(OUTFILE, "w")
@@ -162,12 +164,14 @@ if __name__ == "__main__":
         cis_strs = GetCisSTRs(STRGTFILE, CHROM, start-DISTFROMGENE, end+DISTFROMGENE)
         if cis_strs is None: continue
         PROGRESS("%s STRs tested \n"%str(cis_strs.shape[0]))
-
+        
         # Preprocess all at once
         str_ids = ["STR_%s"%item for item in cis_strs["start"].values]
         starts = list(cis_strs["start"].values)
         colsname  = [val for val in str_samples for _ in (0,1)]
-        cis_strs = cis_strs[colsname].transpose()
+        cis_strs = cis_strs[str_samples].transpose()
+        df1 = pd.DataFrame(data=cis_strs)
+        #df1.to_csv('mydat.txt')
         cis_strs.index = colsname
         cis_strs.columns = str_ids
         #str_samples = colsname
@@ -179,10 +183,13 @@ if __name__ == "__main__":
         
         for j in range(len(str_ids)):            
             # Get STR data
-            locus_str = cis_strs.ix[:, str_ids[j]]
-            #print(str_ids[j])
+            locus_str = cis_strs.loc[:, str_ids[j]]
+            print(str_samples)
+            print(locus_str)
             # Filter
+            # samples_to_keep = [str_samples[k] for k in range(len(str_samples)) if locus_str[str_samples[k]] != "None"]
             samples_to_keep = [str_samples[k] for k in range(len(str_samples)) if locus_str[str_samples[k]] != "None"]
+            print(samples_to_keep)
             locus_str = locus_str[samples_to_keep].astype('float') #locus_str.loc[samples_to_keep,:]
             locus_y = y.loc[samples_to_keep,:]
             
